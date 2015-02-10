@@ -30,7 +30,7 @@
 
 CCrazyflie::CCrazyflie(CCrazyRadio *crRadio) {
   m_crRadio = crRadio;
-  
+
   // Review these values
   m_fMaxAbsRoll = 45.0f;
   m_fMaxAbsPitch = m_fMaxAbsRoll;
@@ -42,14 +42,14 @@ CCrazyflie::CCrazyflie(CCrazyRadio *crRadio) {
   m_fPitch = 0;
   m_fYaw = 0;
   m_nThrust = 0;
-  
+
   m_bSendsSetpoints = false;
-  
+
   m_tocParameters = new CTOC(m_crRadio, 2);
   m_tocLogs = new CTOC(m_crRadio, 5);
-  
+
   m_enumState = STATE_ZERO;
-  
+
   m_dSendSetpointPeriod = 0.01; // Seconds
   m_dSetpointLastSent = 0;
 }
@@ -64,7 +64,7 @@ bool CCrazyflie::readTOCParameters() {
       return true;
     }
   }
-  
+
   return false;
 }
 
@@ -74,23 +74,23 @@ bool CCrazyflie::readTOCLogs() {
       return true;
     }
   }
-  
+
   return false;
 }
 
 bool CCrazyflie::sendSetpoint(float fRoll, float fPitch, float fYaw, short sThrust) {
   fPitch = -fPitch;
-  
+
   int nSize = 3 * sizeof(float) + sizeof(short);
   char cBuffer[nSize];
   memcpy(&cBuffer[0 * sizeof(float)], &fRoll, sizeof(float));
   memcpy(&cBuffer[1 * sizeof(float)], &fPitch, sizeof(float));
   memcpy(&cBuffer[2 * sizeof(float)], &fYaw, sizeof(float));
   memcpy(&cBuffer[3 * sizeof(float)], &sThrust, sizeof(short));
-  
+
   CCRTPPacket *crtpPacket = new CCRTPPacket(cBuffer, nSize, 3);
   CCRTPPacket *crtpReceived = m_crRadio->sendPacket(crtpPacket);
-  
+
   delete crtpPacket;
   if(crtpReceived != NULL) {
     delete crtpReceived;
@@ -106,7 +106,7 @@ bool CCrazyflie::sendSetpoint(float fRoll, float fPitch, float fYaw, short sThru
 
 void CCrazyflie::setThrust(int nThrust) {
   m_nThrust = nThrust;
-  
+
   if(m_nThrust < m_nMinThrust) {
     m_nThrust = m_nMinThrust;
   } else if(m_nThrust > m_nMaxThrust) {
@@ -120,44 +120,44 @@ int CCrazyflie::thrust() {
 
 bool CCrazyflie::cycle() {
   double dTimeNow = this->currentTime();
-  
+
   switch(m_enumState) {
   case STATE_ZERO: {
     m_enumState = STATE_READ_PARAMETERS_TOC;
   } break;
-    
+
   case STATE_READ_PARAMETERS_TOC: {
     if(this->readTOCParameters()) {
       m_enumState = STATE_READ_LOGS_TOC;
     }
   } break;
-    
+
   case STATE_READ_LOGS_TOC: {
     if(this->readTOCLogs()) {
       m_enumState = STATE_START_LOGGING;
     }
   } break;
-    
+
   case STATE_START_LOGGING: {
     if(this->startLogging()) {
       m_enumState = STATE_ZERO_MEASUREMENTS;
     }
   } break;
-    
+
   case STATE_ZERO_MEASUREMENTS: {
     m_tocLogs->processPackets(m_crRadio->popLoggingPackets());
-    
+
     // NOTE(winkler): Here, we can do measurement zero'ing. This is
     // not done at the moment, though. Reason: No readings to zero at
     // the moment. This might change when altitude becomes available.
-    
+
     m_enumState = STATE_NORMAL_OPERATION;
   } break;
-    
+
   case STATE_NORMAL_OPERATION: {
     // Shove over the sensor readings from the radio to the Logs TOC.
     m_tocLogs->processPackets(m_crRadio->popLoggingPackets());
-    
+
     if(m_bSendsSetpoints) {
       // Check if it's time to send the setpoint
       if(dTimeNow - m_dSetpointLastSent > m_dSendSetpointPeriod) {
@@ -170,17 +170,17 @@ bool CCrazyflie::cycle() {
       m_crRadio->sendDummyPacket();
     }
   } break;
-    
+
   default: {
   } break;
   }
-  
+
   if(m_crRadio->ackReceived()) {
     m_nAckMissCounter = 0;
   } else {
     m_nAckMissCounter++;
   }
-  
+
   return m_crRadio->usbOK();
 }
 
@@ -190,7 +190,7 @@ bool CCrazyflie::copterInRange() {
 
 void CCrazyflie::setRoll(float fRoll) {
   m_fRoll = fRoll;
-  
+
   if(fabs(m_fRoll) > m_fMaxAbsRoll) {
     m_fRoll = copysign(m_fMaxAbsRoll, m_fRoll);
   }
@@ -202,7 +202,7 @@ float CCrazyflie::roll() {
 
 void CCrazyflie::setPitch(float fPitch) {
   m_fPitch = fPitch;
-  
+
   if(fabs(m_fPitch) > m_fMaxAbsPitch) {
     m_fPitch = copysign(m_fMaxAbsPitch, m_fPitch);
   }
@@ -243,7 +243,7 @@ bool CCrazyflie::startLogging() {
   this->enableBatteryLogging();
   this->enableMagnetometerLogging();
   this->enableAltimeterLogging();
-  
+
   return true;
 }
 
@@ -254,7 +254,7 @@ bool CCrazyflie::stopLogging() {
   this->disableBatteryLogging();
   this->disableMagnetometerLogging();
   this->disableAltimeterLogging();
-  
+
   return true;
 }
 
@@ -277,7 +277,7 @@ void CCrazyflie::disableLogging() {
 
 void CCrazyflie::enableStabilizerLogging() {
   m_tocLogs->registerLoggingBlock("stabilizer", 1000);
-  
+
   m_tocLogs->startLogging("stabilizer.roll", "stabilizer");
   m_tocLogs->startLogging("stabilizer.pitch", "stabilizer");
   m_tocLogs->startLogging("stabilizer.yaw", "stabilizer");
@@ -383,27 +383,43 @@ void CCrazyflie::disableMagnetometerLogging() {
 
 void CCrazyflie::enableAltimeterLogging() {
   m_tocLogs->registerLoggingBlock("altimeter", 1000);
-  m_tocLogs->startLogging("alti.asl", "altimeter");
-  m_tocLogs->startLogging("alti.aslLong", "altimeter");
-  m_tocLogs->startLogging("alti.pressure", "altimeter");
-  m_tocLogs->startLogging("alti.temperature", "altimeter");
+  m_tocLogs->startLogging("baro.asl", "altimeter");
+  m_tocLogs->startLogging("baro.aslLong", "altimeter");
+  m_tocLogs->startLogging("baro.aslRaw", "altimeter");
+  m_tocLogs->startLogging("baro.pressure", "altimeter");
+  m_tocLogs->startLogging("baro.temp", "altimeter");
 }
 
 float CCrazyflie::asl() {
-  return this->sensorDoubleValue("alti.asl");
+  return this->sensorDoubleValue("baro.asl");
+}
+float CCrazyflie::aslRaw() {
+  return this->sensorDoubleValue("baro.aslRaw");
 }
 float CCrazyflie::aslLong() {
-  return this->sensorDoubleValue("alti.aslLong");
+  return this->sensorDoubleValue("baro.aslLong");
 }
 float CCrazyflie::pressure() {
-  return this->sensorDoubleValue("alti.pressure");
+  return this->sensorDoubleValue("baro.pressure");
 }
 float CCrazyflie::temperature() {
-  return this->sensorDoubleValue("alti.temperature");
+  return this->sensorDoubleValue("baro.temp");
 }
-
-
 
 void CCrazyflie::disableAltimeterLogging() {
   m_tocLogs->unregisterLoggingBlock("altimeter");
+}
+
+void CCrazyflie::enableAltHoldLoggin() {
+	m_tocLogs->registerLoggingBlock("altimeterHold", 1000);
+	m_tocLogs->startLogging("altHold.vSpeed", "altimeterHold");
+	m_tocLogs->startLogging("altHold.target", "altimeterHold");
+	m_tocLogs->startLogging("altHold.err", "altimeterHold");
+	m_tocLogs->startLogging("altHold.vSpeedASL", "altimeterHold");
+	m_tocLogs->startLogging("altHold.vSpeedAcc", "altimeterHold");
+	m_tocLogs->startLogging("altHold.zSpeed", "altimeterHold");
+}
+
+void CCrazyflie::disableAltHoldLoggin() {
+	m_tocLogs->unregisterLoggingBlock("altimeterHold");
 }

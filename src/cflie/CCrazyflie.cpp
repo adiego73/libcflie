@@ -243,6 +243,7 @@ bool CCrazyflie::startLogging() {
   this->enableBatteryLogging();
   this->enableMagnetometerLogging();
   this->enableAltimeterLogging();
+  this->enableAltHoldLoggin();
 
   return true;
 }
@@ -254,6 +255,7 @@ bool CCrazyflie::stopLogging() {
   this->disableBatteryLogging();
   this->disableMagnetometerLogging();
   this->disableAltimeterLogging();
+  this->disableAltHoldLoggin();
 
   return true;
 }

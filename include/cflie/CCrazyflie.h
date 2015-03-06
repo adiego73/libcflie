@@ -146,6 +146,7 @@ class CCrazyflie {
   double currentTime();
 
  public:
+  bool toggleAltHold(bool althold);
   /*! \brief Constructor for the copter convenience class
 
     Constructor for the CCrazyflie class, taking a CCrazyRadio radio

@@ -27,392 +27,502 @@
 
 #include "cflie/CCrazyflie.h"
 
+CCrazyflie::CCrazyflie(CCrazyRadio *crRadio)
+{
+	m_crRadio = crRadio;
 
-CCrazyflie::CCrazyflie(CCrazyRadio *crRadio) {
-  m_crRadio = crRadio;
+	// Review these values
+	m_fMaxAbsRoll = 45.0f;
+	m_fMaxAbsPitch = m_fMaxAbsRoll;
+	m_fMaxYaw = 180.0f;
+	m_nMaxThrust = 60000;
+	m_nMinThrust = 0; //15000;
 
-  // Review these values
-  m_fMaxAbsRoll = 45.0f;
-  m_fMaxAbsPitch = m_fMaxAbsRoll;
-  m_fMaxYaw = 180.0f;
-  m_nMaxThrust = 60000;
-  m_nMinThrust = 0;//15000;
+	m_fRoll = 0;
+	m_fPitch = 0;
+	m_fYaw = 0;
+	m_nThrust = 0;
 
-  m_fRoll = 0;
-  m_fPitch = 0;
-  m_fYaw = 0;
-  m_nThrust = 0;
+	m_bSendsSetpoints = false;
 
-  m_bSendsSetpoints = false;
+	m_tocParameters = new CTOC(m_crRadio, 2);
+	m_tocLogs = new CTOC(m_crRadio, 5);
 
-  m_tocParameters = new CTOC(m_crRadio, 2);
-  m_tocLogs = new CTOC(m_crRadio, 5);
+	m_enumState = STATE_ZERO;
 
-  m_enumState = STATE_ZERO;
-
-  m_dSendSetpointPeriod = 0.01; // Seconds
-  m_dSetpointLastSent = 0;
+	m_dSendSetpointPeriod = 0.01; // Seconds
+	m_dSetpointLastSent = 0;
 }
 
-CCrazyflie::~CCrazyflie() {
-  this->stopLogging();
+CCrazyflie::~CCrazyflie()
+{
+	this->stopLogging();
 }
 
-bool CCrazyflie::readTOCParameters() {
-  if(m_tocParameters->requestMetaData()) {
-    if(m_tocParameters->requestItems()) {
-      return true;
-    }
-  }
+bool CCrazyflie::readTOCParameters()
+{
+	if (m_tocParameters->requestMetaData())
+	{
+		if (m_tocParameters->requestItems())
+		{
+			return true;
+		}
+	}
 
-  return false;
+	return false;
 }
 
-bool CCrazyflie::readTOCLogs() {
-  if(m_tocLogs->requestMetaData()) {
-    if(m_tocLogs->requestItems()) {
-      return true;
-    }
-  }
+bool CCrazyflie::readTOCLogs()
+{
+	if (m_tocLogs->requestMetaData())
+	{
+		if (m_tocLogs->requestItems())
+		{
+			return true;
+		}
+	}
 
-  return false;
+	return false;
 }
 
-bool CCrazyflie::sendSetpoint(float fRoll, float fPitch, float fYaw, short sThrust) {
-  fPitch = -fPitch;
+bool CCrazyflie::sendSetpoint(float fRoll, float fPitch, float fYaw,
+		short sThrust)
+{
+	fPitch = -fPitch;
 
-  int nSize = 3 * sizeof(float) + sizeof(short);
-  char cBuffer[nSize];
-  memcpy(&cBuffer[0 * sizeof(float)], &fRoll, sizeof(float));
-  memcpy(&cBuffer[1 * sizeof(float)], &fPitch, sizeof(float));
-  memcpy(&cBuffer[2 * sizeof(float)], &fYaw, sizeof(float));
-  memcpy(&cBuffer[3 * sizeof(float)], &sThrust, sizeof(short));
+	int nSize = 3 * sizeof(float) + sizeof(short);
+	char cBuffer[nSize];
+	memcpy(&cBuffer[0], &fRoll, sizeof(float));
+	memcpy(&cBuffer[1 * sizeof(float)], &fPitch, sizeof(float));
+	memcpy(&cBuffer[2 * sizeof(float)], &fYaw, sizeof(float));
+	memcpy(&cBuffer[3 * sizeof(float)], &sThrust, sizeof(short));
 
-  CCRTPPacket *crtpPacket = new CCRTPPacket(cBuffer, nSize, 3);
-  CCRTPPacket *crtpReceived = m_crRadio->sendPacket(crtpPacket);
+	CCRTPPacket *crtpPacket = new CCRTPPacket(cBuffer, nSize, 3);
+	CCRTPPacket *crtpReceived = m_crRadio->sendPacket(crtpPacket);
 
-  delete crtpPacket;
-  if(crtpReceived != NULL) {
-    delete crtpReceived;
-    return true;
-  } else {
-    return false;
-  }
+	delete crtpPacket;
+	if (crtpReceived != NULL)
+	{
+		delete crtpReceived;
+		return true;
+	}
+	else
+	{
+		return false;
+	}
 }
 
+bool CCrazyflie::toggleAltHold(bool althold)
+{
+	int nId = m_tocParameters->idForName("flightmode.althold");
 
+	int nSize = sizeof(int) + sizeof(bool);
+	char cBuffer[nSize];
 
+	memcpy(&cBuffer[0], &nId, sizeof(int));
+	memcpy(&cBuffer[1 * sizeof(int)], &althold, sizeof(bool));
 
+	CCRTPPacket *crtpPacket = new CCRTPPacket(cBuffer, nSize, 3);
+	CCRTPPacket *crtpReceived = m_crRadio->sendPacket(crtpPacket);
 
-void CCrazyflie::setThrust(int nThrust) {
-  m_nThrust = nThrust;
-
-  if(m_nThrust < m_nMinThrust) {
-    m_nThrust = m_nMinThrust;
-  } else if(m_nThrust > m_nMaxThrust) {
-    m_nThrust = m_nMaxThrust;
-  }
+	delete crtpPacket;
+	if (crtpReceived != NULL)
+	{
+		delete crtpReceived;
+		return true;
+	}
+	else
+	{
+		return false;
+	}
 }
 
-int CCrazyflie::thrust() {
-  return this->sensorDoubleValue("stabilizer.thrust");
+void CCrazyflie::setThrust(int nThrust)
+{
+	m_nThrust = nThrust;
+
+	if (m_nThrust < m_nMinThrust)
+	{
+		m_nThrust = m_nMinThrust;
+	}
+	else if (m_nThrust > m_nMaxThrust)
+	{
+		m_nThrust = m_nMaxThrust;
+	}
 }
 
-bool CCrazyflie::cycle() {
-  double dTimeNow = this->currentTime();
-
-  switch(m_enumState) {
-  case STATE_ZERO: {
-    m_enumState = STATE_READ_PARAMETERS_TOC;
-  } break;
-
-  case STATE_READ_PARAMETERS_TOC: {
-    if(this->readTOCParameters()) {
-      m_enumState = STATE_READ_LOGS_TOC;
-    }
-  } break;
-
-  case STATE_READ_LOGS_TOC: {
-    if(this->readTOCLogs()) {
-      m_enumState = STATE_START_LOGGING;
-    }
-  } break;
-
-  case STATE_START_LOGGING: {
-    if(this->startLogging()) {
-      m_enumState = STATE_ZERO_MEASUREMENTS;
-    }
-  } break;
-
-  case STATE_ZERO_MEASUREMENTS: {
-    m_tocLogs->processPackets(m_crRadio->popLoggingPackets());
-
-    // NOTE(winkler): Here, we can do measurement zero'ing. This is
-    // not done at the moment, though. Reason: No readings to zero at
-    // the moment. This might change when altitude becomes available.
-
-    m_enumState = STATE_NORMAL_OPERATION;
-  } break;
-
-  case STATE_NORMAL_OPERATION: {
-    // Shove over the sensor readings from the radio to the Logs TOC.
-    m_tocLogs->processPackets(m_crRadio->popLoggingPackets());
-
-    if(m_bSendsSetpoints) {
-      // Check if it's time to send the setpoint
-      if(dTimeNow - m_dSetpointLastSent > m_dSendSetpointPeriod) {
-	// Send the current set point based on the previous calculations
-	this->sendSetpoint(m_fRoll, m_fPitch, m_fYaw, m_nThrust);
-	m_dSetpointLastSent = dTimeNow;
-      }
-    } else {
-      // Send a dummy packet for keepalive
-      m_crRadio->sendDummyPacket();
-    }
-  } break;
-
-  default: {
-  } break;
-  }
-
-  if(m_crRadio->ackReceived()) {
-    m_nAckMissCounter = 0;
-  } else {
-    m_nAckMissCounter++;
-  }
-
-  return m_crRadio->usbOK();
+int CCrazyflie::thrust()
+{
+	return this->sensorDoubleValue("stabilizer.thrust");
 }
 
-bool CCrazyflie::copterInRange() {
-  return m_nAckMissCounter < m_nAckMissTolerance;
+bool CCrazyflie::cycle()
+{
+	double dTimeNow = this->currentTime();
+
+	switch (m_enumState)
+	{
+		case STATE_ZERO:
+		{
+			m_enumState = STATE_READ_PARAMETERS_TOC;
+		}
+		break;
+
+		case STATE_READ_PARAMETERS_TOC:
+		{
+			if (this->readTOCParameters())
+			{
+				m_enumState = STATE_READ_LOGS_TOC;
+			}
+		}
+		break;
+
+		case STATE_READ_LOGS_TOC:
+		{
+			if (this->readTOCLogs())
+			{
+				m_enumState = STATE_START_LOGGING;
+			}
+		}
+		break;
+
+		case STATE_START_LOGGING:
+		{
+			if (this->startLogging())
+			{
+				m_enumState = STATE_ZERO_MEASUREMENTS;
+			}
+		}
+		break;
+
+		case STATE_ZERO_MEASUREMENTS:
+		{
+			m_tocLogs->processPackets(m_crRadio->popLoggingPackets());
+
+			// NOTE(winkler): Here, we can do measurement zero'ing. This is
+			// not done at the moment, though. Reason: No readings to zero at
+			// the moment. This might change when altitude becomes available.
+
+			m_enumState = STATE_NORMAL_OPERATION;
+		}
+		break;
+
+		case STATE_NORMAL_OPERATION:
+		{
+			// Shove over the sensor readings from the radio to the Logs TOC.
+			m_tocLogs->processPackets(m_crRadio->popLoggingPackets());
+
+			if (m_bSendsSetpoints)
+			{
+				// Check if it's time to send the setpoint
+				if (dTimeNow - m_dSetpointLastSent > m_dSendSetpointPeriod)
+				{
+					// Send the current set point based on the previous calculations
+					this->sendSetpoint(m_fRoll, m_fPitch, m_fYaw, m_nThrust);
+					m_dSetpointLastSent = dTimeNow;
+				}
+			}
+			else
+			{
+				// Send a dummy packet for keepalive
+				m_crRadio->sendDummyPacket();
+			}
+		}
+		break;
+
+		default:
+		{
+		}
+		break;
+	}
+
+	if (m_crRadio->ackReceived())
+	{
+		m_nAckMissCounter = 0;
+	}
+	else
+	{
+		m_nAckMissCounter++;
+	}
+
+	return m_crRadio->usbOK();
 }
 
-void CCrazyflie::setRoll(float fRoll) {
-  m_fRoll = fRoll;
-
-  if(fabs(m_fRoll) > m_fMaxAbsRoll) {
-    m_fRoll = copysign(m_fMaxAbsRoll, m_fRoll);
-  }
+bool CCrazyflie::copterInRange()
+{
+	return m_nAckMissCounter < m_nAckMissTolerance;
 }
 
-float CCrazyflie::roll() {
-  return this->sensorDoubleValue("stabilizer.roll");
+void CCrazyflie::setRoll(float fRoll)
+{
+	m_fRoll = fRoll;
+
+	if (fabs(m_fRoll) > m_fMaxAbsRoll)
+	{
+		m_fRoll = copysign(m_fMaxAbsRoll, m_fRoll);
+	}
 }
 
-void CCrazyflie::setPitch(float fPitch) {
-  m_fPitch = fPitch;
-
-  if(fabs(m_fPitch) > m_fMaxAbsPitch) {
-    m_fPitch = copysign(m_fMaxAbsPitch, m_fPitch);
-  }
+float CCrazyflie::roll()
+{
+	return this->sensorDoubleValue("stabilizer.roll");
 }
 
-float CCrazyflie::pitch() {
-  return this->sensorDoubleValue("stabilizer.pitch");
+void CCrazyflie::setPitch(float fPitch)
+{
+	m_fPitch = fPitch;
+
+	if (fabs(m_fPitch) > m_fMaxAbsPitch)
+	{
+		m_fPitch = copysign(m_fMaxAbsPitch, m_fPitch);
+	}
 }
 
-void CCrazyflie::setYaw(float fYaw) {
-  m_fYaw = fYaw;
-
-  if(fabs(m_fYaw) > m_fMaxYaw){
-      m_fYaw = copysign(m_fMaxYaw, m_fYaw);
-  }
+float CCrazyflie::pitch()
+{
+	return this->sensorDoubleValue("stabilizer.pitch");
 }
 
-float CCrazyflie::yaw() {
-  return this->sensorDoubleValue("stabilizer.yaw");
+void CCrazyflie::setYaw(float fYaw)
+{
+	m_fYaw = fYaw;
+
+	if (fabs(m_fYaw) > m_fMaxYaw)
+	{
+		m_fYaw = copysign(m_fMaxYaw, m_fYaw);
+	}
 }
 
-double CCrazyflie::currentTime() {
-  #define NSEC_PER_SEC 1000000000L
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return ts.tv_sec + double(ts.tv_nsec) / NSEC_PER_SEC;
+float CCrazyflie::yaw()
+{
+	return this->sensorDoubleValue("stabilizer.yaw");
 }
 
-bool CCrazyflie::isInitialized() {
-  return m_enumState == STATE_NORMAL_OPERATION;
+double CCrazyflie::currentTime()
+{
+#define NSEC_PER_SEC 1000000000L
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec + double(ts.tv_nsec) / NSEC_PER_SEC;
 }
 
-bool CCrazyflie::startLogging() {
-  // Register the desired sensor readings
-  this->enableStabilizerLogging();
-  this->enableGyroscopeLogging();
-  this->enableAccelerometerLogging();
-  this->enableBatteryLogging();
-  this->enableMagnetometerLogging();
-  this->enableAltimeterLogging();
-  this->enableAltHoldLoggin();
-
-  return true;
+bool CCrazyflie::isInitialized()
+{
+	return m_enumState == STATE_NORMAL_OPERATION;
 }
 
-bool CCrazyflie::stopLogging() {
-  this->disableStabilizerLogging();
-  this->disableGyroscopeLogging();
-  this->disableAccelerometerLogging();
-  this->disableBatteryLogging();
-  this->disableMagnetometerLogging();
-  this->disableAltimeterLogging();
-  this->disableAltHoldLoggin();
+bool CCrazyflie::startLogging()
+{
+	// Register the desired sensor readings
+	this->enableStabilizerLogging();
+	this->enableGyroscopeLogging();
+	this->enableAccelerometerLogging();
+	this->enableBatteryLogging();
+	this->enableMagnetometerLogging();
+	this->enableAltimeterLogging();
+	this->enableAltHoldLoggin();
 
-  return true;
+	return true;
 }
 
-void CCrazyflie::setSendSetpoints(bool bSendSetpoints) {
-  m_bSendsSetpoints = bSendSetpoints;
+bool CCrazyflie::stopLogging()
+{
+	this->disableStabilizerLogging();
+	this->disableGyroscopeLogging();
+	this->disableAccelerometerLogging();
+	this->disableBatteryLogging();
+	this->disableMagnetometerLogging();
+	this->disableAltimeterLogging();
+	this->disableAltHoldLoggin();
+
+	return true;
 }
 
-bool CCrazyflie::sendsSetpoints() {
-  return m_bSendsSetpoints;
+void CCrazyflie::setSendSetpoints(bool bSendSetpoints)
+{
+	m_bSendsSetpoints = bSendSetpoints;
 }
 
-double CCrazyflie::sensorDoubleValue(string strName) {
-  return m_tocLogs->doubleValue(strName);
+bool CCrazyflie::sendsSetpoints()
+{
+	return m_bSendsSetpoints;
 }
 
-void CCrazyflie::disableLogging() {
-  m_tocLogs->unregisterLoggingBlock("high-speed");
-  m_tocLogs->unregisterLoggingBlock("low-speed");
+double CCrazyflie::sensorDoubleValue(string strName)
+{
+	return m_tocLogs->doubleValue(strName);
 }
 
-void CCrazyflie::enableStabilizerLogging() {
-  m_tocLogs->registerLoggingBlock("stabilizer", 1000);
-
-  m_tocLogs->startLogging("stabilizer.roll", "stabilizer");
-  m_tocLogs->startLogging("stabilizer.pitch", "stabilizer");
-  m_tocLogs->startLogging("stabilizer.yaw", "stabilizer");
+void CCrazyflie::disableLogging()
+{
+	m_tocLogs->unregisterLoggingBlock("high-speed");
+	m_tocLogs->unregisterLoggingBlock("low-speed");
 }
 
-void CCrazyflie::enableGyroscopeLogging() {
-  m_tocLogs->registerLoggingBlock("gyroscope", 1000);
+void CCrazyflie::enableStabilizerLogging()
+{
+	m_tocLogs->registerLoggingBlock("stabilizer", 1000);
 
-  m_tocLogs->startLogging("gyro.x", "gyroscope");
-  m_tocLogs->startLogging("gyro.y", "gyroscope");
-  m_tocLogs->startLogging("gyro.z", "gyroscope");
-}
-
-float CCrazyflie::gyroX() {
-  return this->sensorDoubleValue("gyro.x");
+	m_tocLogs->startLogging("stabilizer.roll", "stabilizer");
+	m_tocLogs->startLogging("stabilizer.pitch", "stabilizer");
+	m_tocLogs->startLogging("stabilizer.yaw", "stabilizer");
 }
 
-float CCrazyflie::gyroY() {
-  return this->sensorDoubleValue("gyro.x");
+void CCrazyflie::enableGyroscopeLogging()
+{
+	m_tocLogs->registerLoggingBlock("gyroscope", 1000);
+
+	m_tocLogs->startLogging("gyro.x", "gyroscope");
+	m_tocLogs->startLogging("gyro.y", "gyroscope");
+	m_tocLogs->startLogging("gyro.z", "gyroscope");
 }
 
-float CCrazyflie::gyroZ() {
-  return this->sensorDoubleValue("gyro.x");
+float CCrazyflie::gyroX()
+{
+	return this->sensorDoubleValue("gyro.x");
 }
 
-void CCrazyflie::enableAccelerometerLogging() {
-  m_tocLogs->registerLoggingBlock("accelerometer", 1000);
-
-  m_tocLogs->startLogging("acc.x", "accelerometer");
-  m_tocLogs->startLogging("acc.y", "accelerometer");
-  m_tocLogs->startLogging("acc.z", "accelerometer");
-  m_tocLogs->startLogging("acc.zw", "accelerometer");
+float CCrazyflie::gyroY()
+{
+	return this->sensorDoubleValue("gyro.x");
 }
 
-float CCrazyflie::accX() {
-  return this->sensorDoubleValue("acc.x");
+float CCrazyflie::gyroZ()
+{
+	return this->sensorDoubleValue("gyro.x");
 }
 
-float CCrazyflie::accY() {
-  return this->sensorDoubleValue("acc.y");
+void CCrazyflie::enableAccelerometerLogging()
+{
+	m_tocLogs->registerLoggingBlock("accelerometer", 1000);
+
+	m_tocLogs->startLogging("acc.x", "accelerometer");
+	m_tocLogs->startLogging("acc.y", "accelerometer");
+	m_tocLogs->startLogging("acc.z", "accelerometer");
+	m_tocLogs->startLogging("acc.zw", "accelerometer");
 }
 
-float CCrazyflie::accZ() {
-  return this->sensorDoubleValue("acc.z");
+float CCrazyflie::accX()
+{
+	return this->sensorDoubleValue("acc.x");
 }
 
-float CCrazyflie::accZW() {
-  return this->sensorDoubleValue("acc.zw");
+float CCrazyflie::accY()
+{
+	return this->sensorDoubleValue("acc.y");
 }
 
-void CCrazyflie::disableStabilizerLogging() {
-  m_tocLogs->unregisterLoggingBlock("stabilizer");
+float CCrazyflie::accZ()
+{
+	return this->sensorDoubleValue("acc.z");
 }
 
-void CCrazyflie::disableGyroscopeLogging() {
-  m_tocLogs->unregisterLoggingBlock("gyroscope");
+float CCrazyflie::accZW()
+{
+	return this->sensorDoubleValue("acc.zw");
 }
 
-void CCrazyflie::disableAccelerometerLogging() {
-  m_tocLogs->unregisterLoggingBlock("accelerometer");
+void CCrazyflie::disableStabilizerLogging()
+{
+	m_tocLogs->unregisterLoggingBlock("stabilizer");
 }
 
-void CCrazyflie::enableBatteryLogging() {
-  m_tocLogs->registerLoggingBlock("battery", 1000);
-
-  m_tocLogs->startLogging("pm.vbat", "battery");
-  m_tocLogs->startLogging("pm.state", "battery");
+void CCrazyflie::disableGyroscopeLogging()
+{
+	m_tocLogs->unregisterLoggingBlock("gyroscope");
 }
 
-double CCrazyflie::batteryLevel() {
-  return this->sensorDoubleValue("pm.vbat");
+void CCrazyflie::disableAccelerometerLogging()
+{
+	m_tocLogs->unregisterLoggingBlock("accelerometer");
 }
 
-float CCrazyflie::batteryState() {
-  return this->sensorDoubleValue("pm.state");
+void CCrazyflie::enableBatteryLogging()
+{
+	m_tocLogs->registerLoggingBlock("battery", 1000);
+
+	m_tocLogs->startLogging("pm.vbat", "battery");
+	m_tocLogs->startLogging("pm.state", "battery");
 }
 
-void CCrazyflie::disableBatteryLogging() {
-  m_tocLogs->unregisterLoggingBlock("battery");
+double CCrazyflie::batteryLevel()
+{
+	return this->sensorDoubleValue("pm.vbat");
 }
 
-void CCrazyflie::enableMagnetometerLogging() {
-  m_tocLogs->registerLoggingBlock("magnetometer", 1000);
-
-  m_tocLogs->startLogging("mag.x", "magnetometer");
-  m_tocLogs->startLogging("mag.y", "magnetometer");
-  m_tocLogs->startLogging("mag.z", "magnetometer");
-}
-float CCrazyflie::magX() {
-  return this->sensorDoubleValue("mag.x");
-}
-float CCrazyflie::magY() {
-  return this->sensorDoubleValue("mag.y");
-}
-float CCrazyflie::magZ() {
-  return this->sensorDoubleValue("mag.z");
-}
-void CCrazyflie::disableMagnetometerLogging() {
-  m_tocLogs->unregisterLoggingBlock("magnetometer");
+float CCrazyflie::batteryState()
+{
+	return this->sensorDoubleValue("pm.state");
 }
 
-
-
-void CCrazyflie::enableAltimeterLogging() {
-  m_tocLogs->registerLoggingBlock("altimeter", 1000);
-  m_tocLogs->startLogging("baro.asl", "altimeter");
-  m_tocLogs->startLogging("baro.aslLong", "altimeter");
-  m_tocLogs->startLogging("baro.aslRaw", "altimeter");
-  m_tocLogs->startLogging("baro.pressure", "altimeter");
-  m_tocLogs->startLogging("baro.temp", "altimeter");
+void CCrazyflie::disableBatteryLogging()
+{
+	m_tocLogs->unregisterLoggingBlock("battery");
 }
 
-float CCrazyflie::asl() {
-  return this->sensorDoubleValue("baro.asl");
+void CCrazyflie::enableMagnetometerLogging()
+{
+	m_tocLogs->registerLoggingBlock("magnetometer", 1000);
+
+	m_tocLogs->startLogging("mag.x", "magnetometer");
+	m_tocLogs->startLogging("mag.y", "magnetometer");
+	m_tocLogs->startLogging("mag.z", "magnetometer");
 }
-float CCrazyflie::aslRaw() {
-  return this->sensorDoubleValue("baro.aslRaw");
+float CCrazyflie::magX()
+{
+	return this->sensorDoubleValue("mag.x");
 }
-float CCrazyflie::aslLong() {
-  return this->sensorDoubleValue("baro.aslLong");
+float CCrazyflie::magY()
+{
+	return this->sensorDoubleValue("mag.y");
 }
-float CCrazyflie::pressure() {
-  return this->sensorDoubleValue("baro.pressure");
+float CCrazyflie::magZ()
+{
+	return this->sensorDoubleValue("mag.z");
 }
-float CCrazyflie::temperature() {
-  return this->sensorDoubleValue("baro.temp");
+void CCrazyflie::disableMagnetometerLogging()
+{
+	m_tocLogs->unregisterLoggingBlock("magnetometer");
 }
 
-void CCrazyflie::disableAltimeterLogging() {
-  m_tocLogs->unregisterLoggingBlock("altimeter");
+void CCrazyflie::enableAltimeterLogging()
+{
+	m_tocLogs->registerLoggingBlock("barometer", 1000);
+	m_tocLogs->startLogging("baro.asl", "barometer");
+	m_tocLogs->startLogging("baro.aslLong", "barometer");
+	m_tocLogs->startLogging("baro.aslRaw", "barometer");
+	m_tocLogs->startLogging("baro.pressure", "barometer");
+	m_tocLogs->startLogging("baro.temp", "barometer");
 }
 
-void CCrazyflie::enableAltHoldLoggin() {
+float CCrazyflie::asl()
+{
+	return this->sensorDoubleValue("baro.asl");
+}
+float CCrazyflie::aslRaw()
+{
+	return this->sensorDoubleValue("baro.aslRaw");
+}
+float CCrazyflie::aslLong()
+{
+	return this->sensorDoubleValue("baro.aslLong");
+}
+float CCrazyflie::pressure()
+{
+	return this->sensorDoubleValue("baro.pressure");
+}
+float CCrazyflie::temperature()
+{
+	return this->sensorDoubleValue("baro.temp");
+}
+
+void CCrazyflie::disableAltimeterLogging()
+{
+	m_tocLogs->unregisterLoggingBlock("barometer");
+}
+
+void CCrazyflie::enableAltHoldLoggin()
+{
 	m_tocLogs->registerLoggingBlock("altimeterHold", 1000);
 	m_tocLogs->startLogging("altHold.vSpeed", "altimeterHold");
 	m_tocLogs->startLogging("altHold.target", "altimeterHold");
@@ -422,6 +532,7 @@ void CCrazyflie::enableAltHoldLoggin() {
 	m_tocLogs->startLogging("altHold.zSpeed", "altimeterHold");
 }
 
-void CCrazyflie::disableAltHoldLoggin() {
+void CCrazyflie::disableAltHoldLoggin()
+{
 	m_tocLogs->unregisterLoggingBlock("altimeterHold");
 }
